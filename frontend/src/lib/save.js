@@ -9,7 +9,8 @@ export async function saveActive() {
   st.set({ saving: true });
   try {
     const glb = await exportGLB();
-    if (glb.size > 30e6) throw new Error('Modelo editado passou de 30 MB — não foi possível salvar.');
+    const maxMB = st.catalog?.maxUploadMB || 30;
+    if (glb.size > maxMB * 1e6) throw new Error(`Modelo editado passou de ${maxMB} MB — não foi possível salvar.`);
     const { project } = await api.saveProject(st.activeId, glb);
     st.upsertProject(project);
     markSaved();

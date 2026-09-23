@@ -6,7 +6,8 @@ import { api } from '../lib/api.js';
 const ACCEPT = '.dae,.zip,.glb,.obj,.stl,.skp';
 
 export default function ImportSheet() {
-  const { sheet, set, upsertProject, showToast, dirty } = useStore();
+  const { sheet, set, upsertProject, showToast, dirty, catalog } = useStore();
+  const maxMB = catalog?.maxUploadMB || 30;
   const [file, setFile] = useState(null);
   const [nome, setNome] = useState('');
   const [pct, setPct] = useState(null);
@@ -40,7 +41,8 @@ export default function ImportSheet() {
         <div style={{ fontWeight: 700, marginBottom: 6 }}>No SketchUp</div>
         <div className="muted">1. <b>Arquivo → Exportar → Modelo 3D…</b></div>
         <div className="muted">2. Tipo: <b>COLLADA (*.dae)</b>. Em <b>Opções</b>, deixe marcado “Exportar mapas de textura”.</div>
-        <div className="muted">3. Envie o <b>.dae</b> aqui. Com texturas, compacte o .dae + a pasta que o SketchUp criou em um <b>.zip</b>.</div>
+        <div className="muted">3. <b>Compacte em .zip</b> o .dae (e a pasta de texturas, se houver) e envie aqui. O .dae é texto e fica até 10× menor no zip.</div>
+        <div className="muted" style={{ marginTop: 6 }}>Arquivo grande? Nas opções da exportação, desmarque <b>Exportar arestas</b> e <b>Exportar faces de dois lados</b>.</div>
       </div>
 
       <input ref={input} type="file" accept={ACCEPT} hidden onChange={(e) => choose(e.target.files?.[0])} />
@@ -48,7 +50,7 @@ export default function ImportSheet() {
         <div className="thumb">⬆</div>
         <div style={{ minWidth: 0 }}>
           <div className="name">{file ? file.name : 'Escolher arquivo'}</div>
-          <div className="muted">{file ? `${(file.size / 1e6).toFixed(1)} MB` : '.dae, .zip, .glb, .obj ou .stl — até 30 MB'}</div>
+          <div className="muted">{file ? `${(file.size / 1e6).toFixed(1)} MB` : `.zip, .dae, .glb, .obj ou .stl — até ${maxMB} MB`}</div>
         </div>
       </button>
 
@@ -61,8 +63,8 @@ export default function ImportSheet() {
         <>
           <input className="field" style={{ margin: '4px 0 12px' }} value={nome} maxLength={120} onChange={(e) => setNome(e.target.value)} placeholder="Nome do projeto" />
           {pct !== null && <div className="bar" style={{ marginBottom: 12 }}><i style={{ width: `${pct}%` }} /></div>}
-          <button className="btn primary" disabled={pct !== null || file.size > 30e6} onClick={enviar}>
-            {file.size > 30e6 ? 'Arquivo acima de 30 MB' : pct !== null ? `Enviando… ${pct}%` : 'Importar (grátis)'}
+          <button className="btn primary" disabled={pct !== null || file.size > maxMB * 1e6} onClick={enviar}>
+            {file.size > maxMB * 1e6 ? `Arquivo acima de ${maxMB} MB — compacte em .zip` : pct !== null ? `Enviando… ${pct}%` : 'Importar (grátis)'}
           </button>
         </>
       )}

@@ -60,12 +60,26 @@ export const Q = {
 
 // ---------- Storage
 export const storage = {
+  /** Upload em partes de 5 MB (o Appwrite exige chunks acima de 5 MB). */
   async upload(fileId, buffer, filename, mime, permissions) {
-    const fd = new FormData();
-    fd.append('fileId', fileId);
-    fd.append('file', new Blob([buffer], { type: mime }), filename);
-    for (const p of permissions) fd.append('permissions[]', p);
-    return call('POST', `/storage/buckets/${bucketId}/files`, { body: fd });
+    const CHUNK = 5 * 1024 * 1024;
+    const total = buffer.length;
+    let res;
+    for (let start = 0; start < total || start === 0; start += CHUNK) {
+      const end = Math.min(start + CHUNK, total);
+      const fd = new FormData();
+      fd.append('fileId', fileId);
+      fd.append('file', new Blob([buffer.subarray(start, end)], { type: mime }), filename);
+      for (const p of permissions) fd.append('permissions[]', p);
+      const headers = {};
+      if (total > CHUNK) {
+        headers['Content-Range'] = `bytes ${start}-${end - 1}/${total}`;
+        if (start > 0) headers['X-Appwrite-ID'] = fileId;
+      }
+      res = await call('POST', `/storage/buckets/${bucketId}/files`, { body: fd, headers });
+      if (total <= CHUNK) break;
+    }
+    return res;
   },
   download: (fileId) => call('GET', `/storage/buckets/${bucketId}/files/${fileId}/download`, { raw: true }),
   delete: (fileId) => call('DELETE', `/storage/buckets/${bucketId}/files/${fileId}`),

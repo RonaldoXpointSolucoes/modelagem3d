@@ -4,11 +4,12 @@ import http from 'node:http';
 export function startFakeAppwrite() {
   const docs = new Map();  // `${col}/${id}` -> doc
   const files = new Map(); // id -> { buf, type, name }
+  const chunks = [];
   const users = { 'jwt-ana': { $id: 'user_ana', email: 'ana@teste.com', name: 'Ana' } };
 
   const server = http.createServer(async (req, res) => {
-    const chunks = []; for await (const c of req) chunks.push(c);
-    const raw = Buffer.concat(chunks);
+    const parts = []; for await (const c of req) parts.push(c);
+    const raw = Buffer.concat(parts);
     const url = new URL(req.url, 'http://x');
     const p = url.pathname.replace(/^\/v1/, '');
     const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
@@ -51,7 +52,12 @@ export function startFakeAppwrite() {
       if (req.method === 'POST') {
         const form = await new Request('http://x', { method: 'POST', headers: { 'content-type': req.headers['content-type'] }, body: raw }).formData();
         const f = form.get('file');
-        files.set(form.get('fileId'), { buf: Buffer.from(await f.arrayBuffer()), type: f.type, name: f.name, perms: form.getAll('permissions[]') });
+        const chunk = Buffer.from(await f.arrayBuffer());
+        const prev = req.headers['x-appwrite-id'] && files.get(form.get('fileId'));
+        if (req.headers['content-range'] && chunk.length > 5 * 1024 * 1024) return send(400, { message: 'chunk grande demais' });
+        if (!req.headers['content-range'] && chunk.length > 5 * 1024 * 1024) return send(400, { message: 'arquivo > 5MB sem chunks' });
+        files.set(form.get('fileId'), { buf: prev ? Buffer.concat([prev.buf, chunk]) : chunk, type: f.type, name: f.name, perms: form.getAll('permissions[]') });
+        chunks.push(req.headers['content-range'] || 'single');
         return send(201, { $id: form.get('fileId') });
       }
       if (req.method === 'GET' && dl) {
@@ -62,5 +68,5 @@ export function startFakeAppwrite() {
     }
     send(404, { message: 'route not found ' + p });
   });
-  return new Promise((r) => server.listen(0, () => r({ server, docs, files, url: `http://127.0.0.1:${server.address().port}/v1` })));
+  return new Promise((r) => server.listen(0, () => r({ server, docs, files, chunks, url: `http://127.0.0.1:${server.address().port}/v1` })));
 }

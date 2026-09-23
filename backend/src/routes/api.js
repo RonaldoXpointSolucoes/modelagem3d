@@ -5,6 +5,7 @@ import { ensureProfile, debit, refund, NoCreditsError, applyPaidTransaction } fr
 import { runGeneration, storeModelFiles } from '../lib/pipeline.js';
 import { importToGLB, ImportError } from '../lib/convert.js';
 import { isGLB } from '../lib/glb.js';
+import { gzipSync } from 'node:zlib';
 import { getAIProvider } from '../providers/ai.js';
 import { getPixProvider } from '../providers/pix.js';
 
@@ -13,7 +14,7 @@ const serializePlans = () => Object.fromEntries(Object.entries(PLANS).map(([k, v
 
 export default async function api(app) {
   // ------------------------------------------------------------ público
-  app.get('/api/catalog', async () => ({ planos: serializePlans(), pacotes: CREDIT_PACKS, custos: COSTS }));
+  app.get('/api/catalog', async () => ({ planos: serializePlans(), pacotes: CREDIT_PACKS, custos: COSTS, maxUploadMB: Math.round(config.maxUploadBytes / 1e6) }));
 
   // ------------------------------------------------------------ autenticado
   app.register(async (priv) => {
@@ -134,7 +135,9 @@ export default async function api(app) {
       (async () => {
         try {
           const origId = uniqueId();
-          await storage.upload(origId, buffer, filename, part.mimetype || 'application/octet-stream', [perm.read(uid)]);
+          // Guarda o original compactado (DAE é XML e compacta ~10x)
+          const orig = ext === 'zip' ? { buf: buffer, name: filename, mime: 'application/zip' } : { buf: gzipSync(buffer, { level: 6 }), name: filename + '.gz', mime: 'application/gzip' };
+          await storage.upload(origId, orig.buf, orig.name, orig.mime, [perm.read(uid)]);
           await db.update('projects', project.$id, { original_file_id: origId, progresso: 30 });
           const { glb } = await importToGLB(buffer, filename);
           const patch = await storeModelFiles({ ...project, original_file_id: origId }, glb);
