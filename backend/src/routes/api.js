@@ -2,7 +2,9 @@ import { config, PLANS, CREDIT_PACKS, COSTS } from '../config.js';
 import { db, storage, perm, uniqueId, Q } from '../lib/appwrite.js';
 import { requireUser, effectivePlan } from '../lib/auth.js';
 import { ensureProfile, debit, refund, NoCreditsError, applyPaidTransaction } from '../lib/credits.js';
-import { runGeneration } from '../lib/pipeline.js';
+import { runGeneration, storeModelFiles } from '../lib/pipeline.js';
+import { importToGLB, ImportError } from '../lib/convert.js';
+import { isGLB } from '../lib/glb.js';
 import { getAIProvider } from '../providers/ai.js';
 import { getPixProvider } from '../providers/pix.js';
 
@@ -81,7 +83,7 @@ export default async function api(app) {
     priv.delete('/api/projects/:id', async (req, reply) => {
       const p = await db.getOrNull('projects', req.params.id);
       if (!p || p.user_id !== req.user.$id) return reply.code(404).send({ error: 'nao_encontrado' });
-      for (const k of ['glb', 'dae', 'obj', 'stl', 'thumbnail']) if (p[`${k}_file_id`]) await storage.delete(p[`${k}_file_id`]).catch(() => {});
+      for (const k of ['glb', 'dae', 'obj', 'stl', 'thumbnail', 'original']) if (p[`${k}_file_id`]) await storage.delete(p[`${k}_file_id`]).catch(() => {});
       await db.delete('projects', p.$id);
       return { ok: true };
     });
@@ -90,11 +92,11 @@ export default async function api(app) {
     // fmt: glb (visualizador, sempre liberado) | dae | obj | stl | thumbnail
     priv.get('/api/projects/:id/file/:fmt', async (req, reply) => {
       const { id, fmt } = req.params;
-      if (!['glb', 'dae', 'obj', 'stl', 'thumbnail'].includes(fmt)) return reply.code(400).send({ error: 'formato_invalido' });
+      if (!['glb', 'dae', 'obj', 'stl', 'thumbnail', 'original'].includes(fmt)) return reply.code(400).send({ error: 'formato_invalido' });
       const p = await db.getOrNull('projects', id);
       if (!p || p.user_id !== req.user.$id) return reply.code(404).send({ error: 'nao_encontrado' });
       const download = req.query.download === '1';
-      if (fmt !== 'thumbnail' && (download || fmt !== 'glb')) {
+      if (!['thumbnail', 'original'].includes(fmt) && (download || fmt !== 'glb')) {
         const plano = effectivePlan(await db.get('profiles', req.user.$id));
         if (!plano.exportar.includes(fmt)) return reply.code(403).send({ error: 'plano_sem_exportacao', mensagem: `Exportar ${fmt.toUpperCase()} requer um plano pago.` });
       }
@@ -106,6 +108,55 @@ export default async function api(app) {
       reply.header('Cache-Control', 'private, max-age=3600');
       if (download) reply.header('Content-Disposition', `attachment; filename="${name}"`);
       return reply.send(Buffer.from(await r.arrayBuffer()));
+    });
+
+    // ---- Importar modelo do SketchUp (.dae / .zip com .dae + texturas) ou .glb/.obj/.stl
+    priv.post('/api/import', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+      const uid = req.user.$id;
+      const plano = effectivePlan(await ensureProfile(req.user));
+      if (Number.isFinite(plano.maxProjetos)) {
+        const { total } = await db.list('projects', [Q.equal('user_id', uid), Q.limit(1)]);
+        if (total >= plano.maxProjetos) return reply.code(403).send({ error: 'limite_projetos', mensagem: `Seu plano permite ${plano.maxProjetos} projetos.` });
+      }
+      const part = await req.file();
+      if (!part) return reply.code(400).send({ error: 'arquivo_ausente' });
+      const buffer = await part.toBuffer(); // lança FST_REQ_FILE_TOO_LARGE se passar do limite
+      const filename = part.filename || 'modelo.dae';
+      const nome = (part.fields?.nome?.value || filename.replace(/\.[^.]+$/, '')).trim().slice(0, 120) || 'Modelo importado';
+      const ext = filename.split('.').pop().toLowerCase();
+
+      const project = await db.create('projects', uniqueId(), {
+        user_id: uid, nome_projeto: nome, status: 'gerando', progresso: 10, creditos_usados: 0,
+        origem: 'importado', formato_original: ext, versao: 1,
+      }, [perm.read(uid)]);
+
+      // Processa em segundo plano; o app acompanha pelo Realtime.
+      (async () => {
+        try {
+          const origId = uniqueId();
+          await storage.upload(origId, buffer, filename, part.mimetype || 'application/octet-stream', [perm.read(uid)]);
+          await db.update('projects', project.$id, { original_file_id: origId, progresso: 30 });
+          const { glb } = await importToGLB(buffer, filename);
+          const patch = await storeModelFiles({ ...project, original_file_id: origId }, glb);
+          await db.update('projects', project.$id, { ...patch, status: 'pronto', progresso: 100 });
+        } catch (e) {
+          req.log.warn({ err: e.message }, 'importação falhou');
+          const msg = e instanceof ImportError ? e.message : 'Falha ao processar o arquivo.';
+          await db.update('projects', project.$id, { status: 'falhou', erro: msg.slice(0, 999) }).catch(() => {});
+        }
+      })();
+      return reply.code(202).send({ project });
+    });
+
+    // ---- Salvar a versão editada no app (GLB binário) e regenerar DAE/OBJ/STL
+    priv.post('/api/projects/:id/save', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+      const p = await db.getOrNull('projects', req.params.id);
+      if (!p || p.user_id !== req.user.$id) return reply.code(404).send({ error: 'nao_encontrado' });
+      if (p.status !== 'pronto') return reply.code(409).send({ error: 'projeto_ocupado', mensagem: 'Aguarde o processamento terminar.' });
+      if (!Buffer.isBuffer(req.body) || !isGLB(req.body)) return reply.code(400).send({ error: 'glb_invalido' });
+      const patch = await storeModelFiles(p, req.body);
+      const updated = await db.update('projects', p.$id, { ...patch, versao: (p.versao || 1) + 1 });
+      return { project: updated };
     });
 
     // ---- Pix: cria cobrança de pacote de créditos ou assinatura

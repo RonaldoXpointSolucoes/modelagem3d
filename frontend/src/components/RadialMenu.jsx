@@ -1,17 +1,20 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store.js';
-import { viewerRef } from '../lib/viewerRef.js';
+import { fitCamera } from '../lib/camera.js';
+import { duplicate, remove, undo, editor } from '../lib/editor.js';
 
 const ITEMS = [
   { id: 'translate', label: 'Mover' },
   { id: 'rotate', label: 'Girar' },
   { id: 'scale', label: 'Escala' },
+  { id: 'duplicate', label: 'Duplicar' },
+  { id: 'delete', label: 'Apagar' },
+  { id: 'undo', label: 'Desfazer' },
   { id: 'reset', label: 'Centrar' },
   { id: 'export', label: 'Exportar' },
-  { id: 'deselect', label: 'Soltar' },
 ];
-const R = 86;
+const R = 100;
 
 /** Segurar o dedo 450 ms sobre a cena abre um disco de ferramentas ao redor do polegar. */
 export function useLongPress(targetRef) {
@@ -41,10 +44,13 @@ export function useLongPress(targetRef) {
 export default function RadialMenu({ at, onClose }) {
   const { tool, set } = useStore();
   const pick = (id) => {
-    if (['translate', 'rotate', 'scale'].includes(id)) set({ tool: id, selected: true });
-    if (id === 'deselect') set({ selected: false });
+    if (['translate', 'rotate', 'scale'].includes(id)) set({ tool: id });
+    if (['translate', 'rotate', 'scale'].includes(id) && !editor.selected) useStore.getState().showToast('Toque numa peça para selecioná-la');
+    if (id === 'duplicate') duplicate();
+    if (id === 'delete') remove();
+    if (id === 'undo') undo();
     if (id === 'export') set({ sheet: 'export' });
-    if (id === 'reset') { viewerRef.camera?.position.set(4, 3, 5); viewerRef.controls?.target.set(0, 0.8, 0); viewerRef.controls?.update(); }
+    if (id === 'reset') fitCamera(editor.selected || editor.root);
     onClose();
   };
   // mantém o disco dentro da tela

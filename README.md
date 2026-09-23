@@ -36,6 +36,17 @@ A IA entrega GLB. O backend converte para:
 Gravar **.SKP nativo** exige o SketchUp C SDK (só Windows/macOS). Fica como etapa futura (worker Windows).
 **.STEP B-Rep paramétrico** (plano Avançado) também é etapa futura: malha de IA não é sólido paramétrico.
 
+## Editar modelos do SketchUp (ida e volta)
+
+1. SketchUp: **Arquivo → Exportar → Modelo 3D → COLLADA (.dae)** (com texturas: zip do .dae + pasta).
+2. App: **⬆ Importar** → o backend converte para GLB preservando grupos/componentes, nomes, materiais, unidades e eixo Z.
+3. Editar: toque numa peça (grupo/componente) → mover / girar / escalar, **Abrir** (entra no grupo; toque duplo também), duplicar, cor, apagar, renomear, desfazer. **☰ Peças** lista tudo.
+4. **💾 Salvar** → o app exporta GLB, o backend gera nova versão em DAE/OBJ/STL.
+5. **⇩ Exportar → SketchUp (.DAE)** → no SketchUp, **Arquivo → Importar**.
+
+Não passam pelo Collada: cotas, textos, cenas, tags/camadas e atributos de componentes dinâmicos.
+Rotas: `POST /api/import` (multipart, grátis, até 30 MB) e `POST /api/projects/:id/save` (GLB binário).
+
 ## Planos (fonte única: `backend/src/config.js`)
 
 | Plano | Mensal | Créditos/mês | Projetos | Exporta | Texturas HD |

@@ -31,6 +31,8 @@ export const config = {
     expiresMinutes: Number(env('PIX_EXPIRES_MIN', 10)),
   },
   assimpBin: env('ASSIMP_BIN', 'assimp'),
+  // Limite do Appwrite Storage (_APP_STORAGE_LIMIT, padrão 30 MB)
+  maxUploadBytes: Number(env('MAX_UPLOAD_MB', 30)) * 1_000_000,
 };
 
 // ---- Regras de negócio (fonte única da verdade; o frontend busca via GET /api/catalog)

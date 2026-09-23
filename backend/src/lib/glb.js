@@ -59,3 +59,35 @@ export function makeBoxGLB() {
   const ch = (len, type) => { const b = Buffer.alloc(8); b.writeUInt32LE(len, 0); b.writeUInt32LE(type, 4); return b; };
   return Buffer.concat([header, ch(json.length, 0x4e4f534a), json, ch(bin.length, 0x004e4942), bin]);
 }
+
+// ---------- Utilitários GLB
+export function isGLB(buf) {
+  return buf && buf.length > 20 && buf.readUInt32LE(0) === 0x46546c67;
+}
+
+export function readGLB(buf) {
+  const jsonLen = buf.readUInt32LE(12);
+  const json = JSON.parse(buf.subarray(20, 20 + jsonLen).toString('utf8'));
+  const rest = buf.subarray(20 + jsonLen); // chunk BIN completo (cabeçalho incluso), se existir
+  return { json, rest };
+}
+
+export function writeGLB(json, rest) {
+  let j = Buffer.from(JSON.stringify(json));
+  if (j.length % 4) j = Buffer.concat([j, Buffer.alloc(4 - (j.length % 4), 0x20)]);
+  const header = Buffer.alloc(20);
+  header.writeUInt32LE(0x46546c67, 0); header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(20 + j.length + rest.length, 8);
+  header.writeUInt32LE(j.length, 12); header.writeUInt32LE(0x4e4f534a, 16);
+  return Buffer.concat([header, j, rest]);
+}
+
+/** Renomeia nós do GLB (ex.: ids do Collada -> nomes do SketchUp) e remove nomes automáticos do Assimp. */
+export function renameGLBNodes(buf, names) {
+  const { json, rest } = readGLB(buf);
+  for (const n of json.nodes || []) {
+    if (n.name && names[n.name]) n.name = names[n.name];
+    else if (n.name && n.name.startsWith('$ColladaAutoName$')) n.name = 'Modelo';
+  }
+  return writeGLB(json, rest);
+}

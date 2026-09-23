@@ -10,6 +10,9 @@ import PixSheet from './components/PixSheet.jsx';
 import ProjectsSheet from './components/ProjectsSheet.jsx';
 import ExportSheet from './components/ExportSheet.jsx';
 import RadialMenu, { useLongPress } from './components/RadialMenu.jsx';
+import ImportSheet from './components/ImportSheet.jsx';
+import PartsSheet from './components/PartsSheet.jsx';
+import EditBar from './components/EditBar.jsx';
 
 const Viewer = lazy(() => import('./components/Viewer.jsx'));
 
@@ -35,6 +38,13 @@ export default function App() {
 
   useEffect(() => { boot(); }, [boot]);
 
+  // Aviso ao sair com alterações não salvas
+  useEffect(() => {
+    const h = (e) => { if (useStore.getState().dirty) { e.preventDefault(); e.returnValue = ''; } };
+    window.addEventListener('beforeunload', h);
+    return () => window.removeEventListener('beforeunload', h);
+  }, []);
+
   // Realtime: saldo/plano e progresso dos projetos, sem recarregar a página
   useEffect(() => {
     if (phase !== 'app' || !s.user) return;
@@ -49,8 +59,8 @@ export default function App() {
         if (ev.events.some((e) => e.endsWith('.delete'))) return useStore.getState().removeProject(doc.$id);
         const prev = useStore.getState().projects.find((p) => p.$id === doc.$id);
         useStore.getState().upsertProject(doc);
-        if (prev?.status === 'gerando' && doc.status === 'pronto') { navigator.vibrate?.(40); useStore.getState().showToast('Modelo pronto! ✨'); }
-        if (prev?.status === 'gerando' && doc.status === 'falhou') useStore.getState().showToast('A geração falhou — créditos devolvidos.', 'error');
+        if (prev?.status === 'gerando' && doc.status === 'pronto') { navigator.vibrate?.(40); useStore.getState().showToast(doc.origem === 'importado' ? 'Modelo importado! Toque numa peça para editar.' : 'Modelo pronto! ✨'); }
+        if (prev?.status === 'gerando' && doc.status === 'falhou') useStore.getState().showToast(doc.origem === 'importado' ? (doc.erro || 'Não foi possível importar.') : 'A geração falhou — créditos devolvidos.', 'error');
       }
     });
     return () => unsub();
@@ -74,11 +84,11 @@ export default function App() {
       </div>
 
       {!s.activeId && (
-        <div className="hint"><b>Seu estúdio 3D</b>Toque em “Criar com IA” e descreva o que quer modelar. Segure o dedo na tela para ferramentas.</div>
+        <div className="hint"><b>Seu estúdio 3D</b>Toque em “Criar com IA” ou importe um modelo do SketchUp (⬆). Segure o dedo na tela para ferramentas.</div>
       )}
       {active?.status === 'gerando' && (
         <div className="gen-badge glass">
-          <div style={{ fontWeight: 600, fontSize: 14 }}>Gerando “{active.nome_projeto.slice(0, 28)}”… {active.progresso || 0}%</div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{active.origem === 'importado' ? 'Importando' : 'Gerando'} “{active.nome_projeto.slice(0, 28)}”… {active.progresso || 0}%</div>
           <div className="bar"><i style={{ width: `${active.progresso || 3}%` }} /></div>
         </div>
       )}
@@ -88,19 +98,23 @@ export default function App() {
       <div className="dock glass">
         {['translate', 'rotate', 'scale'].map((t) => (
           <button key={t} className={s.selected && s.tool === t ? 'active' : ''} aria-label={t}
-            onClick={() => s.set({ tool: t, selected: !!s.activeId })}>
+            onClick={() => { s.set({ tool: t }); if (!s.selected) s.showToast('Toque numa peça para selecioná-la'); }}>
             {t === 'translate' ? '✥' : t === 'rotate' ? '⟳' : '⤢'}
           </button>
         ))}
         <button className="primary" onClick={() => s.set({ sheet: 'prompt' })}>✦ Criar com IA</button>
-        <button aria-label="Exportar" onClick={() => s.set({ sheet: 'export' })}>⇪</button>
+        <button aria-label="Importar do SketchUp" onClick={() => s.set({ sheet: 'import' })}>⬆</button>
+        <button aria-label="Exportar" onClick={() => s.set({ sheet: 'export' })}>⇩</button>
       </div>
 
+      <EditBar />
       <RadialMenu at={radialAt} onClose={closeRadial} />
       <PromptSheet />
       <PixSheet />
       <ProjectsSheet />
       <ExportSheet />
+      <ImportSheet />
+      <PartsSheet />
       <Toast />
     </>
   );

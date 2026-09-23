@@ -3,7 +3,7 @@
 import { config } from '../config.js';
 import { db, storage, perm, uniqueId, Q } from './appwrite.js';
 import { getAIProvider } from '../providers/ai.js';
-import { convertForSketchUp } from './convert.js';
+import { convertForSketchUp, SKETCHUP_FORMATS } from './convert.js';
 import { refund } from './credits.js';
 
 const running = new Set();
@@ -46,38 +46,52 @@ async function _run(project, log) {
 }
 
 async function finish(project, s) {
+  const patch = await storeModelFiles(project, s.glb, { thumbnail: s.thumbnail });
+  await db.update('projects', project.$id, { ...patch, status: 'pronto', progresso: 100 });
+}
+
+/**
+ * Salva o GLB (e thumbnail opcional) no Storage e gera DAE/OBJ/STL para o SketchUp.
+ * Devolve o patch com os novos file ids. Apaga os arquivos antigos do projeto que foram substituídos.
+ */
+export async function storeModelFiles(project, glb, { thumbnail, onProgress } = {}) {
   const uid = project.user_id;
   const perms = [perm.read(uid)];
   const name = slug(project.nome_projeto);
+  const old = ['glb', 'dae', 'obj', 'stl'].map((k) => project[`${k}_file_id`]).filter(Boolean);
   const glbId = uniqueId();
-  await storage.upload(glbId, s.glb, `${name}.glb`, 'model/gltf-binary', perms);
-  const patch = { glb_file_id: glbId, progresso: 97 };
-  if (s.thumbnail) {
+  await storage.upload(glbId, glb, `${name}.glb`, 'model/gltf-binary', perms);
+  const patch = { glb_file_id: glbId, erro: null };
+  if (thumbnail) {
     const thId = uniqueId();
-    await storage.upload(thId, s.thumbnail, `${name}.png`, 'image/png', perms);
+    await storage.upload(thId, thumbnail, `${name}.png`, 'image/png', perms);
+    if (project.thumbnail_file_id) old.push(project.thumbnail_file_id);
     patch.thumbnail_file_id = thId;
   }
-  await db.update('projects', project.$id, patch);
-
-  // Conversões para SketchUp (não bloqueiam o "pronto" se falharem)
+  onProgress?.(60);
+  for (const k of SKETCHUP_FORMATS) patch[`${k}_file_id`] = null;
   try {
-    const conv = await convertForSketchUp(s.glb, name);
+    const conv = await convertForSketchUp(glb, name);
     for (const [fmt, f] of Object.entries(conv)) {
       const id = uniqueId();
       await storage.upload(id, f.buffer, f.filename, f.mime, perms);
       patch[`${fmt}_file_id`] = id;
     }
   } catch (e) {
-    patch.erro = 'Conversão para SketchUp falhou: ' + e.message.slice(0, 200);
+    patch.erro = 'Conversão para SketchUp falhou: ' + String(e.message).slice(0, 200);
   }
-  await db.update('projects', project.$id, { ...patch, status: 'pronto', progresso: 100 });
+  for (const id of old) await storage.delete(id).catch(() => {});
+  return patch;
 }
 
 /** Retoma gerações interrompidas por reinício do servidor. */
 export async function resumePending(log) {
   try {
     const { documents } = await db.list('projects', [Q.equal('status', 'gerando'), Q.limit(100)]);
-    for (const p of documents) if (p.provider_task_id) runGeneration(p, log);
+    for (const p of documents) {
+      if (p.provider_task_id) runGeneration(p, log);
+      else await db.update('projects', p.$id, { status: 'falhou', erro: 'Processamento interrompido pelo reinício do servidor. Envie o arquivo de novo.' });
+    }
     if (documents.length) log.info(`retomando ${documents.length} geração(ões) pendente(s)`);
   } catch (e) {
     log.warn({ err: e.message }, 'não foi possível retomar gerações');

@@ -2,9 +2,10 @@ import BottomSheet from './BottomSheet.jsx';
 import { useStore } from '../store.js';
 import { api } from '../lib/api.js';
 import { viewerRef } from '../lib/viewerRef.js';
+import { saveActive } from '../lib/save.js';
 
 const FORMATOS = [
-  { id: 'dae', titulo: 'SketchUp (.DAE)', desc: 'Recomendado. No SketchUp: Arquivo → Importar → Collada.' },
+  { id: 'dae', titulo: 'SketchUp (.DAE)', desc: 'Recomendado. No SketchUp: Arquivo → Importar → COLLADA (.dae). Grupos, componentes e materiais voltam como estavam.' },
   { id: 'obj', titulo: 'OBJ + materiais (.ZIP)', desc: 'SketchUp Pro 2021+, Blender, 3ds Max.' },
   { id: 'stl', titulo: 'STL', desc: 'Impressão 3D e SketchUp (extensão STL).' },
   { id: 'glb', titulo: 'GLB', desc: 'Web, AR, Blender, Unity.' },
@@ -17,11 +18,12 @@ function save(blob, name) {
 }
 
 export default function ExportSheet() {
-  const { sheet, set, activeId, projects, plano, showToast } = useStore();
+  const { sheet, set, activeId, projects, plano, showToast, dirty, saving } = useStore();
   const p = projects.find((x) => x.$id === activeId);
   const pode = (f) => plano?.exportar?.includes(f);
 
   async function baixar(fmt) {
+    if (dirty && fmt !== 'glb-local') { if (!(await saveActive())) return; }
     if (!pode(fmt)) { showToast(`${fmt.toUpperCase()} disponível a partir do plano Básico`); set({ sheet: 'pix' }); return; }
     try {
       const b = await api.file(activeId, fmt, true);
@@ -40,7 +42,8 @@ export default function ExportSheet() {
   return (
     <BottomSheet open={sheet === 'export'} onClose={() => set({ sheet: null })}>
       <h2>Exportar</h2>
-      <p className="sub">{p ? p.nome_projeto : 'Abra um projeto para exportar.'}</p>
+      <p className="sub">{p ? `${p.nome_projeto} · versão ${p.versao || 1}` : 'Abra um projeto para exportar.'}</p>
+      {dirty && <div className="card" style={{ marginBottom: 10 }}>Você tem alterações não salvas. Ao baixar, eu salvo antes para o arquivo sair com as mudanças.{saving ? ' Salvando…' : ''}</div>}
       <button className="proj" onClick={png}>
         <div className="thumb">🖼</div>
         <div><div className="name">Imagem (PNG)</div><div className="muted">Captura da vista atual.</div></div>

@@ -28,12 +28,16 @@ export default function ProjectsSheet() {
       {projects.map((p) => (
         <div key={p.$id} className="row">
           <button className="proj" style={p.$id === activeId ? { outline: '1px solid var(--accent)' } : undefined}
-            onClick={() => p.status !== 'falhou' && set({ activeId: p.$id, sheet: null, selected: false })}>
+            onClick={() => {
+              if (p.status === 'falhou') return;
+              if (p.$id !== activeId && useStore.getState().dirty && !window.confirm('Há alterações não salvas. Descartar e abrir outro projeto?')) return;
+              set({ activeId: p.$id, sheet: null });
+            }}>
             <Thumb p={p} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div className="name">{p.nome_projeto}</div>
               <div className="muted">
-                {p.status === 'gerando' ? `Gerando… ${p.progresso || 0}%` : p.status === 'falhou' ? 'Falhou — créditos devolvidos' : new Date(p.$createdAt).toLocaleDateString('pt-BR')}
+                {p.status === 'gerando' ? `${p.origem === 'importado' ? 'Importando' : 'Gerando'}… ${p.progresso || 0}%` : p.status === 'falhou' ? (p.origem === 'importado' ? (p.erro || 'Falhou') : 'Falhou — créditos devolvidos') : `${p.origem === 'importado' ? 'SketchUp · ' : 'IA · '}v${p.versao || 1} · ${new Date(p.$updatedAt || p.$createdAt).toLocaleDateString('pt-BR')}`}
               </div>
               {p.status === 'gerando' && <div className="bar"><i style={{ width: `${p.progresso || 3}%` }} /></div>}
             </div>

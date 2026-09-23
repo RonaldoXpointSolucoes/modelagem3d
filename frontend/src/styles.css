@@ -108,3 +108,13 @@ input, textarea { font: inherit; color: var(--text); }
 .hint { position: fixed; left: 0; right: 0; top: 42%; text-align: center; color: var(--muted); pointer-events: none; padding: 0 30px; }
 .hint b { color: var(--text); display: block; font-size: 22px; margin-bottom: 6px; }
 .gen-badge { position: fixed; left: 50%; transform: translateX(-50%); top: calc(64px + var(--safe-top)); z-index: 9; padding: 10px 16px; border-radius: 18px; min-width: 220px; }
+
+/* ---------- Editor */
+.editbar-top { position: fixed; top: calc(62px + var(--safe-top)); left: 12px; right: 12px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 9; pointer-events: none; }
+.editbar-top > * { pointer-events: auto; height: 38px; font-size: 14px; }
+.editbar-top .save { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; border-color: transparent; }
+.editbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(90px + var(--safe-bottom)); z-index: 10; border-radius: 22px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; width: min(92vw, 460px); }
+.editbar .name { font-weight: 700; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 2px 4px; }
+.editbar .row button { flex: 1; height: 40px; border-radius: 14px; background: rgba(255, 255, 255, 0.08); font-weight: 600; font-size: 14px; }
+.editbar .row button.danger { background: rgba(255, 90, 106, 0.22); color: #ffb3bb; }
+.gen-badge { top: calc(110px + var(--safe-top)); }

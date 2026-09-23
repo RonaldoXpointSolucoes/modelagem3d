@@ -2,7 +2,7 @@ FROM node:22-bookworm-slim
 
 # assimp-utils: conversão GLB -> DAE/OBJ/STL (formatos que o SketchUp importa)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends assimp-utils zip ca-certificates \
+ && apt-get install -y --no-install-recommends assimp-utils zip unzip ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -7,9 +7,15 @@ export const useStore = create((set) => ({
   catalog: null,
   projects: [],
   activeId: null,      // projeto aberto no visualizador
-  selected: false,     // objeto selecionado (mostra gizmo)
+  selected: false,     // peça selecionada (mostra gizmo)
+  selectedName: null,
+  canUndo: false,
+  dirty: false,        // há alterações não salvas
+  saving: false,
+  editPath: [],        // grupos em que o usuário entrou
+  parts: [],           // peças do nível atual
   tool: 'translate',   // translate | rotate | scale
-  sheet: null,         // 'prompt' | 'pix' | 'projects' | 'export' | null
+  sheet: null,         // 'prompt' | 'pix' | 'projects' | 'export' | 'import' | 'parts' | null
   toast: null,
 
   set: (p) => set(p),

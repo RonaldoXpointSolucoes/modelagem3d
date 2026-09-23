@@ -105,3 +105,45 @@ test('sem créditos retorna 402', async () => {
   assert.equal(r.statusCode, 402);
   assert.equal(r.json().error, 'sem_creditos');
 });
+
+test('importa DAE do SketchUp, preserva grupos e salva versão editada', async () => {
+  fake.docs.get('profiles/user_ana').saldo_creditos = 5;
+  fake.docs.get('profiles/user_ana').plano = 'basico';
+  const { readFileSync } = await import('node:fs');
+  const fd = new FormData();
+  fd.append('nome', 'Bancada');
+  fd.append('file', new Blob([readFileSync(new URL('./fixture-sketchup.dae', import.meta.url))]), 'Bancada.dae');
+  const req = new Request('http://x', { method: 'POST', body: fd });
+  const r = await app.inject({ method: 'POST', url: '/api/import', headers: { ...auth, 'content-type': req.headers.get('content-type') }, payload: Buffer.from(await req.arrayBuffer()) });
+  assert.equal(r.statusCode, 202, r.body);
+  const p = await waitProject(r.json().project.$id, 'pronto');
+  assert.equal(p.origem, 'importado');
+  assert.ok(p.dae_file_id && p.original_file_id);
+  assert.equal(fake.docs.get('profiles/user_ana').saldo_creditos, 5, 'importar não consome créditos');
+  const glb = await app.inject({ method: 'GET', url: `/api/projects/${p.$id}/file/glb`, headers: auth });
+  const { readGLB } = await import('../src/lib/glb.js');
+  const names = readGLB(glb.rawPayload).json.nodes.map((n) => n.name);
+  assert.ok(names.includes('Mesa') && names.includes('Cadeira'), names.join(','));
+  // DAE exportado mantém polegadas e Z para cima do SketchUp
+  const dae = await app.inject({ method: 'GET', url: `/api/projects/${p.$id}/file/dae?download=1`, headers: auth });
+  assert.match(dae.body, /<up_axis>Z_UP<\/up_axis>/);
+  assert.match(dae.body, /meter="0\.025(4|39)/);
+  assert.match(dae.body, /name="Mesa"/);
+  // salvar edição
+  const s = await app.inject({ method: 'POST', url: `/api/projects/${p.$id}/save`, headers: { ...auth, 'content-type': 'application/octet-stream' }, payload: glb.rawPayload });
+  assert.equal(s.statusCode, 200, s.body);
+  assert.equal(s.json().project.versao, 2);
+  assert.notEqual(s.json().project.dae_file_id, p.dae_file_id);
+  // arquivo inválido
+  const bad = await app.inject({ method: 'POST', url: `/api/projects/${p.$id}/save`, headers: { ...auth, 'content-type': 'application/octet-stream' }, payload: Buffer.from('nada') });
+  assert.equal(bad.statusCode, 400);
+});
+
+test('recusa .skp com instrução de exportar .dae', async () => {
+  const fd = new FormData();
+  fd.append('file', new Blob([Buffer.from('SketchUp Model')]), 'Bancada.skp');
+  const req = new Request('http://x', { method: 'POST', body: fd });
+  const r = await app.inject({ method: 'POST', url: '/api/import', headers: { ...auth, 'content-type': req.headers.get('content-type') }, payload: Buffer.from(await req.arrayBuffer()) });
+  const p = await waitProject(r.json().project.$id, 'falhou');
+  assert.match(p.erro, /COLLADA/);
+});
