@@ -118,10 +118,14 @@ test('importa DAE do SketchUp, preserva grupos e salva versão editada', async (
   assert.equal(r.statusCode, 202, r.body);
   const p = await waitProject(r.json().project.$id, 'pronto');
   assert.equal(p.origem, 'importado');
-  assert.ok(p.dae_file_id && p.original_file_id);
+  assert.ok(p.dae_file_id && p.original_file_id, JSON.stringify(p));
   assert.equal(fake.docs.get('profiles/user_ana').saldo_creditos, 5, 'importar não consome créditos');
   const glb = await app.inject({ method: 'GET', url: `/api/projects/${p.$id}/file/glb`, headers: auth });
   const { readGLB } = await import('../src/lib/glb.js');
+  // navegador: recebe compactado (gzip) e descompacta sozinho
+  const gz = await app.inject({ method: 'GET', url: `/api/projects/${p.$id}/file/glb`, headers: { ...auth, 'accept-encoding': 'gzip, br' } });
+  assert.equal(gz.headers['content-encoding'], 'gzip');
+  assert.ok(gz.rawPayload.length < glb.rawPayload.length);
   const names = readGLB(glb.rawPayload).json.nodes.map((n) => n.name);
   assert.ok(names.includes('Mesa') && names.includes('Cadeira'), names.join(','));
   // DAE exportado mantém polegadas e Z para cima do SketchUp

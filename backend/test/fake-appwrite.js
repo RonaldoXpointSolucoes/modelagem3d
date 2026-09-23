@@ -52,6 +52,8 @@ export function startFakeAppwrite() {
       if (req.method === 'POST') {
         const form = await new Request('http://x', { method: 'POST', headers: { 'content-type': req.headers['content-type'] }, body: raw }).formData();
         const f = form.get('file');
+        const ALLOWED = ['glb', 'gltf', 'dae', 'obj', 'mtl', 'stl', 'zip', 'png', 'jpg', 'jpeg', 'step', 'stp', 'gz'];
+        if (!ALLOWED.includes(f.name.split('.').pop().toLowerCase())) return send(400, { message: 'File extension not allowed' });
         const chunk = Buffer.from(await f.arrayBuffer());
         const prev = req.headers['x-appwrite-id'] && files.get(form.get('fileId'));
         if (req.headers['content-range'] && chunk.length > 5 * 1024 * 1024) return send(400, { message: 'chunk grande demais' });

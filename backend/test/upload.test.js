@@ -13,7 +13,7 @@ test('upload acima de 5 MB vai em partes e o arquivo chega inteiro', async () =>
   const { storage } = await import('../src/lib/appwrite.js');
   const big = Buffer.alloc(12 * 1024 * 1024 + 123, 7);
   big[0] = 1; big[big.length - 1] = 9;
-  await storage.upload('grande', big, 'g.bin', 'application/octet-stream', []);
+  await storage.upload('grande', big, 'g.glb', 'application/octet-stream', []);
   const f = fake.files.get('grande');
   assert.equal(f.buf.length, big.length);
   assert.ok(f.buf.equals(big));

@@ -27,10 +27,20 @@ async function req(method, path, body) {
   return data;
 }
 
-async function blob(path) {
+async function blob(path, onProgress) {
   const r = await fetch(env.apiUrl + path, { headers: { Authorization: `Bearer ${await token()}` } });
   if (!r.ok) throw new ApiError(r.status, await r.json().catch(() => ({})));
-  return r.blob();
+  if (!onProgress || !r.body) return r.blob();
+  // lê em partes para mostrar o progresso (o servidor envia compactado; aqui já chega descompactado)
+  const reader = r.body.getReader();
+  const parts = []; let got = 0, last = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value); got += value.length;
+    if (got - last > 2e6) { last = got; onProgress(got / 1e6); }
+  }
+  return new Blob(parts, { type: r.headers.get('content-type') || 'application/octet-stream' });
 }
 
 /** Upload com progresso (XHR) — importação de modelos do SketchUp */
@@ -59,7 +69,7 @@ export const api = {
   generate: (prompt, opts = {}) => req('POST', '/api/generate', { prompt, ...opts }),
   projects: () => req('GET', '/api/projects'),
   deleteProject: (id) => req('DELETE', `/api/projects/${id}`),
-  file: (id, fmt, download = false) => blob(`/api/projects/${id}/file/${fmt}${download ? '?download=1' : ''}`),
+  file: (id, fmt, download = false, onProgress) => blob(`/api/projects/${id}/file/${fmt}${download ? '?download=1' : ''}`, onProgress),
   importFile: (file, nome, onProgress) => upload('/api/import', file, nome ? { nome } : {}, onProgress),
   async saveProject(id, glbBlob) {
     const r = await fetch(env.apiUrl + `/api/projects/${id}/save`, {

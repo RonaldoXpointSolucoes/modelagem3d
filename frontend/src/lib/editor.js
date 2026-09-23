@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { useStore } from '../store.js';
+import * as view from './display.js';
 
 export const editor = {
   root: null,       // gltf.scene carregada
@@ -17,6 +18,10 @@ const MAX_HISTORY = 50;
 
 function publish(extra = {}) {
   const lvl = editor.level;
+  // a vista explodida vale para o nível em que foi aberta
+  if (view.display.explode > 0 && view.display.explodeLevel !== lvl) view.setExplode(0);
+  view.setSelected(editor.selected);
+  view.update();
   const path = [];
   const top = editor.root ? topLevel(editor.root) : null;
   for (let o = lvl; o && o !== top; o = o.parent) path.unshift(o.name || 'Grupo');
@@ -25,7 +30,7 @@ function publish(extra = {}) {
     selected: !!editor.selected,
     canUndo: editor.history.length > 0,
     editPath: path,
-    parts: lvl ? lvl.children.filter(isPart).map((c) => ({ uuid: c.uuid, name: c.name || (c.isMesh ? 'Face/malha' : 'Grupo'), visible: c.visible })) : [],
+    parts: lvl ? lvl.children.filter(isPart).map((c) => ({ uuid: c.uuid, name: c.name || (c.isMesh ? 'Face/malha' : 'Grupo'), visible: c.visible, group: !c.isMesh })) : [],
     ...extra,
   });
 }
@@ -47,17 +52,19 @@ function topLevel(root) {
 export async function loadGLB(arrayBuffer) {
   const gltf = await new GLTFLoader().parseAsync(arrayBuffer, '');
   const root = gltf.scene;
-  root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   editor.root = root;
   editor.level = topLevel(root);
   editor.selected = null;
   editor.history = [];
-  publish({ dirty: false });
+  view.build(root);
+  let meshes = 0; root.traverse((o) => { if (o.isMesh) meshes++; });
+  publish({ dirty: false, modelInfo: { meshes } });
   return root;
 }
 
 export function unload() {
   editor.root = editor.level = editor.selected = null;
+  view.build(null);
   editor.history = [];
   publish({ dirty: false });
 }
@@ -77,6 +84,22 @@ export function select(obj) {
 export function selectByUuid(uuid) {
   select(editor.level?.children.find((c) => c.uuid === uuid) || null);
 }
+
+export const findByUuid = (uuid) => editor.root?.getObjectByProperty('uuid', uuid) || null;
+
+/** Seleciona qualquer nó do modelo (ex.: resultado da busca): entra no grupo pai dele. */
+export function selectDeep(obj) {
+  if (!obj || !editor.root) return;
+  const top = topLevel(editor.root);
+  let inTop = false;
+  for (let p = obj.parent; p; p = p.parent) if (p === top) inTop = true;
+  editor.level = obj.parent && (inTop || obj.parent === top) ? obj.parent : top;
+  editor.selected = obj;
+  publish();
+}
+
+/** Chamado a cada movimento do gizmo: atualiza a exibição sem gravar histórico. */
+export function transformChanged() { view.update(editor.selected); }
 
 export function enterGroup(obj = editor.selected) {
   if (!obj || !obj.children.some(isPart)) return false;
@@ -182,7 +205,7 @@ export function undo() {
 export async function exportGLB() {
   if (!editor.root) throw new Error('Nenhum modelo aberto');
   const objects = editor.root.children.slice();
-  const res = await new GLTFExporter().parseAsync(objects, { binary: true, onlyVisible: true, maxTextureSize: 4096 });
+  const res = await new GLTFExporter().parseAsync(objects, { binary: true, onlyVisible: false, maxTextureSize: 4096 });
   return new Blob([res], { type: 'model/gltf-binary' });
 }
 

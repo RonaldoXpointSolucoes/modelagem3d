@@ -5,7 +5,9 @@ import { ensureProfile, debit, refund, NoCreditsError, applyPaidTransaction } fr
 import { runGeneration, storeModelFiles } from '../lib/pipeline.js';
 import { importToGLB, ImportError } from '../lib/convert.js';
 import { isGLB } from '../lib/glb.js';
-import { gzipSync } from 'node:zlib';
+import { gzipSync, gunzipSync } from 'node:zlib';
+
+const MIME = { glb: 'model/gltf-binary', dae: 'model/vnd.collada+xml', stl: 'model/stl', obj: 'application/zip', thumbnail: 'image/png' };
 import { getAIProvider } from '../providers/ai.js';
 import { getPixProvider } from '../providers/pix.js';
 
@@ -104,11 +106,20 @@ export default async function api(app) {
       const fileId = p[`${fmt}_file_id`];
       if (!fileId) return reply.code(404).send({ error: 'arquivo_indisponivel' });
       const r = await storage.download(fileId);
-      const name = decodeURIComponent((r.headers.get('content-disposition') || '').match(/filename="?([^";]+)/)?.[1] || `${id}.${fmt}`);
-      reply.header('Content-Type', r.headers.get('content-type') || 'application/octet-stream');
+      let name = decodeURIComponent((r.headers.get('content-disposition') || '').match(/filename="?([^";]+)/)?.[1] || `${id}.${fmt}`);
+      let body = Buffer.from(await r.arrayBuffer());
+      let type = r.headers.get('content-type') || 'application/octet-stream';
+      // arquivos guardados compactados (.gz): envia com Content-Encoding: gzip (o navegador descompacta)
+      if (fmt !== 'original' && body[0] === 0x1f && body[1] === 0x8b) {
+        name = name.replace(/\.gz$/i, '');
+        type = MIME[fmt] || 'application/octet-stream';
+        if (/\bgzip\b/.test(req.headers['accept-encoding'] || '')) { reply.header('Content-Encoding', 'gzip'); reply.header('Vary', 'Accept-Encoding'); }
+        else body = gunzipSync(body);
+      }
+      reply.header('Content-Type', type);
       reply.header('Cache-Control', 'private, max-age=3600');
       if (download) reply.header('Content-Disposition', `attachment; filename="${name}"`);
-      return reply.send(Buffer.from(await r.arrayBuffer()));
+      return reply.send(body);
     });
 
     // ---- Importar modelo do SketchUp (.dae / .zip com .dae + texturas) ou .glb/.obj/.stl

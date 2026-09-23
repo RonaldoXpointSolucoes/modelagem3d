@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store.js';
 import { fitCamera } from '../lib/camera.js';
 import { duplicate, remove, undo, editor } from '../lib/editor.js';
+import { hideSelected, isolateSelected } from '../lib/viewTools.js';
 
 const ITEMS = [
   { id: 'translate', label: 'Mover' },
@@ -12,9 +13,11 @@ const ITEMS = [
   { id: 'delete', label: 'Apagar' },
   { id: 'undo', label: 'Desfazer' },
   { id: 'reset', label: 'Centrar' },
+  { id: 'hide', label: 'Ocultar' },
+  { id: 'isolate', label: 'Isolar' },
   { id: 'export', label: 'Exportar' },
 ];
-const R = 100;
+const R = 112;
 
 /** Segurar o dedo 450 ms sobre a cena abre um disco de ferramentas ao redor do polegar. */
 export function useLongPress(targetRef) {
@@ -50,6 +53,8 @@ export default function RadialMenu({ at, onClose }) {
     if (id === 'delete') remove();
     if (id === 'undo') undo();
     if (id === 'export') set({ sheet: 'export' });
+    if (id === 'hide') hideSelected();
+    if (id === 'isolate') isolateSelected();
     if (id === 'reset') fitCamera(editor.selected || editor.root);
     onClose();
   };

@@ -13,6 +13,9 @@ import RadialMenu, { useLongPress } from './components/RadialMenu.jsx';
 import ImportSheet from './components/ImportSheet.jsx';
 import PartsSheet from './components/PartsSheet.jsx';
 import EditBar from './components/EditBar.jsx';
+import ViewToolbar from './components/ViewToolbar.jsx';
+import ViewSheet from './components/ViewSheet.jsx';
+import { installShortcuts } from './lib/viewTools.js';
 
 const Viewer = lazy(() => import('./components/Viewer.jsx'));
 
@@ -37,6 +40,7 @@ export default function App() {
   }, []);
 
   useEffect(() => { boot(); }, [boot]);
+  useEffect(() => installShortcuts(), []);
 
   // Aviso ao sair com alterações não salvas
   useEffect(() => {
@@ -94,6 +98,7 @@ export default function App() {
       )}
 
       <TopBar onLogout={logout} />
+      {s.view.eraser && <div className="mode-pill glass" onClick={() => s.setView({ eraser: false })}>⌫ Borracha ativa — toque nas peças para ocultar · <b>Sair</b></div>}
 
       <div className="dock glass">
         {['translate', 'rotate', 'scale'].map((t) => (
@@ -108,6 +113,7 @@ export default function App() {
       </div>
 
       <EditBar />
+      <ViewToolbar />
       <RadialMenu at={radialAt} onClose={closeRadial} />
       <PromptSheet />
       <PixSheet />
@@ -115,6 +121,7 @@ export default function App() {
       <ExportSheet />
       <ImportSheet />
       <PartsSheet />
+      <ViewSheet />
       <Toast />
     </>
   );

@@ -11,6 +11,7 @@ import { join, extname, basename } from 'node:path';
 import { promisify } from 'node:util';
 import { config } from '../config.js';
 import { renameGLBNodes } from './glb.js';
+import { isGLB1, glb1ToGlb2 } from './gltf1to2.js';
 
 const run = promisify(execFile);
 
@@ -95,12 +96,17 @@ export async function importToGLB(buffer, filename) {
       if (!model) throw new ImportError('O .zip não contém um .dae, .glb, .obj ou .stl.');
     }
     const out = join(dir, 'out.glb');
+    // O exportador glTF2 do Assimp trava em modelos grandes; o glTF1 é rápido e convertemos para glTF2 aqui.
     try {
-      await run(config.assimpBin, ['export', model.p, out, '-fglb2', '-jiv'], { timeout: 300_000, maxBuffer: 16 << 20 });
+      await run(config.assimpBin, ['export', model.p, out, '-fglb'], { timeout: 600_000, maxBuffer: 16 << 20 });
     } catch (e) {
-      throw new ImportError('Não foi possível ler o modelo. Confira se o arquivo abre no SketchUp e exporte de novo como .dae.');
+      console.error('assimp import falhou:', e.killed ? 'timeout' : (e.stderr || e.message || '').slice(-500));
+      throw new ImportError(e.killed
+        ? 'O modelo é grande demais para converter. No SketchUp, exporte sem arestas e sem faces de dois lados, ou exporte só a parte que vai editar.'
+        : 'Não foi possível ler o modelo. Confira se o arquivo abre no SketchUp e exporte de novo como .dae.');
     }
     let glb = await readFile(out);
+    if (isGLB1(glb)) glb = glb1ToGlb2(glb);
     if (model.x === 'dae') glb = renameGLBNodes(glb, colladaNodeNames(await readFile(model.p, 'utf8')));
     return { glb, formato: model.x };
   } finally {

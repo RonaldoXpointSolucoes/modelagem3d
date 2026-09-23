@@ -17,8 +17,14 @@ export const useStore = create((set) => ({
   tool: 'translate',   // translate | rotate | scale
   sheet: null,         // 'prompt' | 'pix' | 'projects' | 'export' | 'import' | 'parts' | null
   toast: null,
+  // visualização (não altera o modelo salvo)
+  view: { xray: false, eraser: false, explode: 0, isolated: false, hiddenCount: 0, canUndoVis: false, section: { on: false, axis: 'y', t: 0.5, flip: false } },
+  shadowKey: 0,
+  modelInfo: null,
 
   set: (p) => set(p),
+  setView: (p) => set((s) => ({ view: { ...s.view, ...p } })),
+  bumpShadow: () => set((s) => ({ shadowKey: s.shadowKey + 1 })),
   setProfile: (profile) => set({ profile }),
   upsertProject: (doc) => set((s) => {
     const i = s.projects.findIndex((p) => p.$id === doc.$id);

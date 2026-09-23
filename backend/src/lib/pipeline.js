@@ -5,6 +5,13 @@ import { db, storage, perm, uniqueId, Q } from './appwrite.js';
 import { getAIProvider } from '../providers/ai.js';
 import { convertForSketchUp, SKETCHUP_FORMATS } from './convert.js';
 import { refund } from './credits.js';
+import { gzip as gzipCb } from 'node:zlib';
+import { promisify } from 'node:util';
+
+// GLB/DAE/STL são guardados compactados (GLB ~6x, DAE ~10x menor); a API envia com
+// Content-Encoding: gzip e o navegador descompacta sozinho — download bem mais rápido.
+const gzip = promisify(gzipCb);
+const packed = async (buf) => gzip(buf, { level: 6 });
 
 const running = new Set();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -60,7 +67,7 @@ export async function storeModelFiles(project, glb, { thumbnail, onProgress } = 
   const name = slug(project.nome_projeto);
   const old = ['glb', 'dae', 'obj', 'stl'].map((k) => project[`${k}_file_id`]).filter(Boolean);
   const glbId = uniqueId();
-  await storage.upload(glbId, glb, `${name}.glb`, 'model/gltf-binary', perms);
+  await storage.upload(glbId, await packed(glb), `${name}.glb.gz`, 'application/gzip', perms);
   const patch = { glb_file_id: glbId, erro: null };
   if (thumbnail) {
     const thId = uniqueId();
@@ -74,7 +81,8 @@ export async function storeModelFiles(project, glb, { thumbnail, onProgress } = 
     const conv = await convertForSketchUp(glb, name);
     for (const [fmt, f] of Object.entries(conv)) {
       const id = uniqueId();
-      await storage.upload(id, f.buffer, f.filename, f.mime, perms);
+      if (f.mime === 'application/zip') await storage.upload(id, f.buffer, f.filename, f.mime, perms);
+      else await storage.upload(id, await packed(f.buffer), `${f.filename}.gz`, 'application/gzip', perms);
       patch[`${fmt}_file_id`] = id;
     }
   } catch (e) {

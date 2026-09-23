@@ -1,13 +1,15 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store.js';
 import { duplicate, remove, setColor, undo, enterGroup, exitGroup, rename } from '../lib/editor.js';
 import { saveActive } from '../lib/save.js';
+import { hideSelected, isolateSelected, similar, focusSelected } from '../lib/viewTools.js';
 
 /** Barra de edição da peça selecionada + navegação de grupos + salvar. */
 export default function EditBar() {
   const { selected, selectedName, canUndo, dirty, saving, editPath, set, activeId, projects } = useStore();
   const color = useRef();
+  const [sim, setSim] = useState(false);
   const project = projects.find((p) => p.$id === activeId);
   if (!project || project.status !== 'pronto') return null;
 
@@ -44,6 +46,20 @@ export default function EditBar() {
               <button className="danger" onClick={remove}>Apagar</button>
               <input ref={color} type="color" hidden onChange={(e) => setColor(e.target.value)} />
             </div>
+            {sim ? (
+              <div className="row" style={{ gap: 4 }}>
+                <button onClick={() => { similar('isolate'); setSim(false); }}>◎ Isolar iguais</button>
+                <button onClick={() => { similar('hide'); setSim(false); }}>⊘ Ocultar iguais</button>
+                <button style={{ flex: 0.4 }} onClick={() => setSim(false)}>✕</button>
+              </div>
+            ) : (
+              <div className="row" style={{ gap: 4 }}>
+                <button onClick={hideSelected} title="Ocultar (H)">⊘ Ocultar</button>
+                <button onClick={isolateSelected} title="Isolar (I)">◎ Isolar</button>
+                <button onClick={() => setSim(true)} title="Peças com a mesma forma">⧉ Iguais</button>
+                <button onClick={focusSelected} title="Enquadrar (F)">⌖ Focar</button>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

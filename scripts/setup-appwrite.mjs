@@ -118,7 +118,7 @@ async function main() {
   // Bucket privado: permissão por arquivo (fileSecurity). Downloads passam pelo backend.
   const b = await aw('POST', '/storage/buckets', {
     bucketId: BUCKET, name: 'Modelos 3D', permissions: [], fileSecurity: true, enabled: true,
-    maximumFileSize: Number(process.env.APPWRITE_MAX_FILE || 30_000_000), allowedFileExtensions: ['glb', 'gltf', 'dae', 'obj', 'mtl', 'stl', 'zip', 'png', 'jpg', 'jpeg', 'step', 'stp'],
+    maximumFileSize: Number(process.env.APPWRITE_MAX_FILE || 30_000_000), allowedFileExtensions: ['glb', 'gltf', 'dae', 'obj', 'mtl', 'stl', 'zip', 'png', 'jpg', 'jpeg', 'step', 'stp', 'gz'],
     compression: 'none', encryption: true, antivirus: true,
   });
   console.log(`bucket ${BUCKET}: ${b.status === 409 ? 'já existe' : 'criado'}`);
